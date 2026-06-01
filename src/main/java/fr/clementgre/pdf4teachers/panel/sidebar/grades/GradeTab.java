@@ -30,6 +30,7 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 
 import java.util.HashMap;
+import java.util.OptionalInt;
 
 @SuppressWarnings("serial")
 public class GradeTab extends SideTab {
@@ -84,7 +85,7 @@ public class GradeTab extends SideTab {
     
     public GradeElement newGradeElementAuto(GradeTreeItem parent){
         
-        PageRenderer page = MainWindow.mainScreen.document.getLastCursorOverPageObject();
+        PageRenderer page = getPageForNewGrade(parent);
         
         MainWindow.mainScreen.setSelected(null);
         
@@ -103,6 +104,30 @@ public class GradeTab extends SideTab {
         MainWindow.mainScreen.setSelected(current);
         
         return current;
+    }
+    
+    private PageRenderer getPageForNewGrade(GradeTreeItem parent){
+        OptionalInt mappedPage = MainWindow.footerBar != null ? MainWindow.footerBar.getExercisePageIndex(getExerciseKeyForNewGrade(parent)) : OptionalInt.empty();
+        if(mappedPage.isPresent()){
+            int pageIndex = Math.min(mappedPage.getAsInt(), MainWindow.mainScreen.document.getPagesNumber() - 1);
+            return MainWindow.mainScreen.document.getPage(pageIndex);
+        }
+        
+        return MainWindow.mainScreen.document.getLastCursorOverPageObject();
+    }
+    
+    private String getExerciseKeyForNewGrade(GradeTreeItem parent){
+        if(parent.isRoot()){
+            return ExerciseCorrectionWorkflow.getNewGradeExerciseKey(true, parent.getChildren().size(), -1);
+        }
+        
+        GradeTreeItem topLevelParent = parent;
+        while(topLevelParent.getParent() instanceof GradeTreeItem gradeTreeItem && gradeTreeItem != GradeTreeView.getTotal()){
+            topLevelParent = gradeTreeItem;
+        }
+        
+        int topLevelIndex = GradeTreeView.getTotal().getChildren().indexOf(topLevelParent);
+        return ExerciseCorrectionWorkflow.getNewGradeExerciseKey(false, -1, topLevelIndex);
     }
     
     public void newGradeElement(String name, double value, double total, int index, String parentPath, boolean update){

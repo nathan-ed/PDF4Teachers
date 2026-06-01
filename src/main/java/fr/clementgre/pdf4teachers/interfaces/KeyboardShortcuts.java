@@ -150,6 +150,18 @@ public class KeyboardShortcuts {
             MainWindow.filesTab.loadNextFile();
             e.consume();
         }));
+        shortcuts.add(new ShortcutRecord("Previous exercise file",
+                new KeyCodesCombination(KeyCode.LEFT, KeyCode.KP_LEFT,
+                KeyCodesCombination.SHORTCUT_DOWN, KeyCodesCombination.ALT_DOWN, KeyCodesCombination.SHIFT_DOWN), e -> {
+            MainWindow.filesTab.loadPreviousFileExercisePage();
+            e.consume();
+        }));
+        shortcuts.add(new ShortcutRecord("Next exercise file",
+                new KeyCodesCombination(KeyCode.RIGHT, KeyCode.KP_RIGHT,
+                KeyCodesCombination.SHORTCUT_DOWN, KeyCodesCombination.ALT_DOWN, KeyCodesCombination.SHIFT_DOWN), e -> {
+            MainWindow.filesTab.loadNextFileExercisePage();
+            e.consume();
+        }));
         // Begin/End and Page Up/Page Down
         shortcuts.add(new ShortcutRecord(TR.tr("shortcuts.navigation.begin"),
                 new KeyCodesCombination(KeyCode.BEGIN, KeyCode.HOME), e -> {

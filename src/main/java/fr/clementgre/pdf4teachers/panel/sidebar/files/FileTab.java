@@ -15,6 +15,7 @@ import fr.clementgre.pdf4teachers.interfaces.windows.language.TR;
 import fr.clementgre.pdf4teachers.interfaces.windows.log.Log;
 import fr.clementgre.pdf4teachers.panel.sidebar.SideBar;
 import fr.clementgre.pdf4teachers.panel.sidebar.SideTab;
+import fr.clementgre.pdf4teachers.panel.sidebar.grades.ExerciseCorrectionWorkflow;
 import fr.clementgre.pdf4teachers.utils.FilesUtils;
 import fr.clementgre.pdf4teachers.utils.PlatformUtils;
 import fr.clementgre.pdf4teachers.utils.dialogs.AlertIconType;
@@ -332,6 +333,61 @@ public class FileTab extends SideTab {
         if(toOpen == null) return;
         MainWindow.mainScreen.openFile(toOpen);
     }
+    public void loadPreviousFileExercisePage(){
+        int selected = files.getSelectionModel().getSelectedIndex();
+        if(selected <= 0){
+            MainWindow.showNotification(AlertIconType.INFORMATION, TR.tr("filesTab.navigation.beginningOfList"), 15);
+            return;
+        }
+        
+        File toOpen = files.getItems().get(selected - 1);
+        if(toOpen == null) return;
+        openFileForExercisePage(toOpen);
+    }
+    public void loadNextFileExercisePage(){
+        int selected = files.getSelectionModel().getSelectedIndex();
+        if(selected == files.getItems().size() - 1){
+            MainWindow.showNotification(AlertIconType.INFORMATION, TR.tr("filesTab.navigation.endOfList"), 15);
+            return;
+        }
+        
+        File toOpen = files.getItems().get(selected + 1);
+        if(toOpen == null) return;
+        openFileForExercisePage(toOpen);
+    }
+    private void openFileForExercisePage(File toOpen){
+        OptionalInt exercisePage = getExerciseNavigationTarget();
+        if(exercisePage.isPresent()){
+            preloadNeighborExercisePages();
+            MainWindow.mainScreen.setForceScrollToPage(exercisePage.getAsInt());
+            MainWindow.mainScreen.openFile(toOpen, true);
+            return;
+        }
+        MainWindow.mainScreen.openFile(toOpen);
+    }
+    private OptionalInt getExerciseNavigationTarget(){
+        if(MainWindow.footerBar != null && MainWindow.footerBar.isExerciseCorrectionMode() && MainWindow.mainScreen.hasDocument(false)){
+            return ExerciseCorrectionWorkflow.getNavigationTarget(true, MainWindow.footerBar.getSelectedExercisePageIndex(), MainWindow.mainScreen.document.getPagesNumber());
+        }
+        return OptionalInt.empty();
+    }
+    public void preloadNeighborExercisePages(){
+        OptionalInt exercisePage = getExerciseNavigationTarget();
+        if(exercisePage.isEmpty()) return;
+        
+        int selected = files.getSelectionModel().getSelectedIndex();
+        int renderWidth = PageRenderer.getRenderWidthForCurrentSettings();
+        preloadNeighborExercisePages(selected - 1, exercisePage.getAsInt(), renderWidth);
+        preloadNeighborExercisePages(selected + 1, exercisePage.getAsInt(), renderWidth);
+    }
+    private void preloadNeighborExercisePages(int fileIndex, int exercisePage, int renderWidth){
+        if(fileIndex < 0 || fileIndex >= files.getItems().size()) return;
+        
+        File file = files.getItems().get(fileIndex);
+        if(file == null) return;
+        Edition.preloadEditFile(file);
+        PDFPagesRender.preloadPages(file, exercisePage, exercisePage + 1, renderWidth);
+    }
 
     // NAVIGATION WITH PAGE PRESERVATION
     public void loadPreviousFilePreservePage(){
@@ -341,12 +397,20 @@ public class FileTab extends SideTab {
             return;
         }
 
+        File toOpen = files.getItems().get(selected - 1);
+        if(toOpen == null) return;
+        
+        OptionalInt exercisePage = getExerciseNavigationTarget();
+        if(exercisePage.isPresent()){
+            preloadNeighborExercisePages();
+            MainWindow.mainScreen.setForceScrollToPage(exercisePage.getAsInt());
+            MainWindow.mainScreen.openFile(toOpen, true);
+            return;
+        }
+
         // Get currently visible page (not cursor position - works without clicking)
         PageRenderer visiblePage = MainWindow.mainScreen.document.getFirstTopVisiblePage();
         int currentPage = visiblePage != null ? visiblePage.getPage() : 0;
-
-        File toOpen = files.getItems().get(selected - 1);
-        if(toOpen == null) return;
 
         // Set the target page BEFORE opening the file
         // openFile() will scroll to this page after layout
@@ -362,12 +426,20 @@ public class FileTab extends SideTab {
             return;
         }
 
+        File toOpen = files.getItems().get(selected + 1);
+        if(toOpen == null) return;
+        
+        OptionalInt exercisePage = getExerciseNavigationTarget();
+        if(exercisePage.isPresent()){
+            preloadNeighborExercisePages();
+            MainWindow.mainScreen.setForceScrollToPage(exercisePage.getAsInt());
+            MainWindow.mainScreen.openFile(toOpen, true);
+            return;
+        }
+
         // Get currently visible page (not cursor position - works without clicking)
         PageRenderer visiblePage = MainWindow.mainScreen.document.getFirstTopVisiblePage();
         int currentPage = visiblePage != null ? visiblePage.getPage() : 0;
-
-        File toOpen = files.getItems().get(selected + 1);
-        if(toOpen == null) return;
 
         // Set the target page BEFORE opening the file
         // openFile() will scroll to this page after layout
@@ -375,7 +447,6 @@ public class FileTab extends SideTab {
         MainWindow.mainScreen.setForceScrollToPage(currentPage);
         MainWindow.mainScreen.openFile(toOpen, true);
     }
-    
     
     public void refresh(){
         files.refresh();

@@ -7,6 +7,7 @@ package fr.clementgre.pdf4teachers.panel.sidebar.texts;
 
 import fr.clementgre.pdf4teachers.Main;
 import fr.clementgre.pdf4teachers.components.menus.NodeMenuItem;
+import fr.clementgre.pdf4teachers.datasaving.simpleconfigs.TextElementsData;
 import fr.clementgre.pdf4teachers.document.editions.Edition;
 import fr.clementgre.pdf4teachers.document.editions.elements.TextElement;
 import fr.clementgre.pdf4teachers.document.editions.undoEngine.UType;
@@ -330,16 +331,20 @@ public class TextTreeView extends TreeView<String> {
     public static void addSavedElement(TextTreeItem element){
         if(element.getType() == TextTreeSection.FAVORITE_TYPE){
             MainWindow.textTab.treeView.favoritesSection.addElement(element);
+            TextElementsData.requestSave();
         }else if(element.getType() == TextTreeSection.LAST_TYPE){
             MainWindow.textTab.treeView.lastsSection.addElement(element);
+            TextElementsData.requestSave();
         }
     }
     
     public static void removeSavedElement(TextTreeItem element){
         if(element.getType() == TextTreeSection.FAVORITE_TYPE){
             MainWindow.textTab.treeView.favoritesSection.removeElement(element);
+            TextElementsData.requestSave();
         }else if(element.getType() == TextTreeSection.LAST_TYPE){
             MainWindow.textTab.treeView.lastsSection.removeElement(element);
+            TextElementsData.requestSave();
         }
     }
     
@@ -378,5 +383,4 @@ public class TextTreeView extends TreeView<String> {
         
     }
 }
-
 

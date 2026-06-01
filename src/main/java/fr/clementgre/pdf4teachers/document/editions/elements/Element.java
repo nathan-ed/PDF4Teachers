@@ -6,6 +6,7 @@
 package fr.clementgre.pdf4teachers.document.editions.elements;
 
 import fr.clementgre.pdf4teachers.Main;
+import fr.clementgre.pdf4teachers.components.menus.NodeMenuItem;
 import fr.clementgre.pdf4teachers.document.editions.Edition;
 import fr.clementgre.pdf4teachers.document.editions.undoEngine.MoveUndoAction;
 import fr.clementgre.pdf4teachers.document.editions.undoEngine.UType;
@@ -13,6 +14,8 @@ import fr.clementgre.pdf4teachers.document.render.display.PageRenderer;
 import fr.clementgre.pdf4teachers.interfaces.windows.MainWindow;
 import fr.clementgre.pdf4teachers.utils.MathUtils;
 import fr.clementgre.pdf4teachers.utils.PlatformUtils;
+import fr.clementgre.pdf4teachers.utils.dialogs.alerts.TextInputAlert;
+import fr.clementgre.pdf4teachers.utils.dialogs.alerts.WrongAlert;
 import javafx.beans.property.IntegerProperty;
 import javafx.beans.property.SimpleIntegerProperty;
 import javafx.beans.value.ChangeListener;
@@ -25,7 +28,9 @@ import javafx.scene.input.MouseButton;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class Element extends Region {
@@ -125,9 +130,18 @@ public abstract class Element extends Region {
                 dragAlreadyDetected = false;
                 
                 if(e.getClickCount() == 1){
-                    lastClickSelected.set(MainWindow.mainScreen.getSelected() == this);
+                    boolean multiSelectToggle = e.isShortcutDown() || e.isShiftDown();
+                    lastClickSelected.set(MainWindow.mainScreen.isElementSelected(this));
                     menu.hide();
-                    select();
+                    
+                    if(multiSelectToggle && e.getButton() == MouseButton.PRIMARY){
+                        MainWindow.mainScreen.toggleSelectedElement(this);
+                        return;
+                    }
+                    
+                    if(!(e.getButton() == MouseButton.SECONDARY && MainWindow.mainScreen.isElementSelected(this))){
+                        select();
+                    }
                     
                     if(e.getButton() == MouseButton.SECONDARY){
                         menu.show(getPage(), e.getScreenX(), e.getScreenY());
@@ -196,12 +210,61 @@ public abstract class Element extends Region {
     }
     
     public boolean isSelected(){
-        return MainWindow.mainScreen.getSelected() == this;
+        return MainWindow.mainScreen.isElementSelected(this);
+    }
+    public void updateSelectionStyle(){
+        if(isSelected()) onSelected();
+        else onDeSelected();
     }
     
     protected abstract void setupBindings();
     
     protected abstract void setupMenu();
+    
+    protected NodeMenuItem getSendToPageMenuItem(){
+        NodeMenuItem item = new NodeMenuItem("Send to page...", false);
+        item.setOnAction(e -> showSendToPageDialog());
+        return item;
+    }
+    
+    private void showSendToPageDialog(){
+        if(!MainWindow.mainScreen.hasDocument(false)) return;
+        
+        TextInputAlert alert = new TextInputAlert("Send to page", "Send annotation to page", "Page");
+        alert.setText(String.valueOf(getPageNumber() + 1));
+        
+        if(!alert.getShowAndWaitIsDefaultButton()) return;
+        
+        Integer targetPage = MathUtils.parseIntOrNull(alert.getText().trim());
+        int pagesCount = MainWindow.mainScreen.document.getPagesNumber();
+        if(targetPage == null || targetPage < 1 || targetPage > pagesCount){
+            new WrongAlert("Invalid page number", "Enter a page number between 1 and " + pagesCount + ".", false).showAndWait();
+            return;
+        }
+        
+        sendSelectionToPage(targetPage - 1);
+    }
+    
+    private void sendSelectionToPage(int page){
+        List<Element> elements = isSelected() ? MainWindow.mainScreen.getSelectedElements() : List.of(this);
+        ArrayList<Element> movedElements = new ArrayList<>();
+        for(Element element : elements){
+            if(element.getPageNumber() != page) movedElements.add(element);
+        }
+        if(movedElements.isEmpty()) return;
+        
+        MainWindow.mainScreen.registerNewAction(new MoveUndoAction(UType.ELEMENT, movedElements.getFirst()));
+        for(int i = 1; i < movedElements.size(); i++){
+            MainWindow.mainScreen.registerNewAction(new MoveUndoAction(UType.ELEMENT_NO_COUNT_BEFORE, movedElements.get(i)));
+        }
+        
+        for(Element element : movedElements){
+            element.switchPage(page);
+            element.checkLocation(false);
+        }
+        Edition.setUnsave("ElementSendToPage");
+        if(!isSelected()) select();
+    }
     
     protected abstract void onMouseRelease();
     

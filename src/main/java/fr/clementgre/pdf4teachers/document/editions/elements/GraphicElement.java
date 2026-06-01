@@ -589,7 +589,7 @@ public abstract class GraphicElement extends Element {
             checkLocation(getLayoutX(), getLayoutY(), getWidth(), getWidth() / getRatio(), false);
         });
         
-        menu.getItems().addAll(item1, item2, item3);
+        menu.getItems().addAll(item1, item2, getSendToPageMenuItem(), item3);
         NodeMenuItem.setupMenu(menu);
         
         item1.setOnAction(e -> delete(true, UType.ELEMENT));

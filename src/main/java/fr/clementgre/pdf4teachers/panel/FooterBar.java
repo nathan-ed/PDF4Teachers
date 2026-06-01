@@ -8,8 +8,12 @@ package fr.clementgre.pdf4teachers.panel;
 import fr.clementgre.pdf4teachers.components.SliderWithoutPopup;
 import fr.clementgre.pdf4teachers.interfaces.windows.MainWindow;
 import fr.clementgre.pdf4teachers.interfaces.windows.language.TR;
+import fr.clementgre.pdf4teachers.datasaving.simpleconfigs.ExerciseCorrectionData;
 import fr.clementgre.pdf4teachers.panel.MainScreen.MainScreen;
 import fr.clementgre.pdf4teachers.panel.MainScreen.ZoomOperator;
+import fr.clementgre.pdf4teachers.panel.sidebar.grades.ExerciseCorrectionWorkflow;
+import fr.clementgre.pdf4teachers.panel.sidebar.grades.ExercisePageMapping;
+import fr.clementgre.pdf4teachers.panel.sidebar.grades.ExercisePageMappingDialog;
 import fr.clementgre.pdf4teachers.panel.sidebar.grades.GradeTreeView;
 import fr.clementgre.pdf4teachers.utils.PlatformUtils;
 import fr.clementgre.pdf4teachers.utils.panes.PaneUtils;
@@ -23,6 +27,8 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
@@ -31,6 +37,9 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Line;
 import javafx.util.Duration;
+
+import java.util.List;
+import java.util.OptionalInt;
 
 public class FooterBar extends StackPane {
 
@@ -47,6 +56,13 @@ public class FooterBar extends StackPane {
     private final ToggleButton columnView = new ToggleButton("", SVGPathIcons.generateImage(SVGPathIcons.SINGLE_PAGE, "white", 0, 25, lightGrayColorAdjust));
     private final ToggleButton gridView = new ToggleButton("", SVGPathIcons.generateImage(SVGPathIcons.MULTI_PAGE, "white", 0, 25, lightGrayColorAdjust));
     private final ToggleButton editPagesMode = new ToggleButton(TR.tr("footerBar.editPages"));
+    private final HBox exerciseCorrection = new HBox();
+    private final ToggleButton exerciseCorrectionMode = new ToggleButton("Exercise");
+    private final ComboBox<String> exerciseSelector = new ComboBox<>();
+    private final Button exercisePages = new Button("Pages");
+    private final Label selectedElements = new Label();
+    private final ExercisePageMapping exercisePageMapping = new ExercisePageMapping();
+    private String selectedExerciseKey = "Q1";
 
     private final Label statsElements = new Label();
     private final Label statsTexts = new Label();
@@ -59,6 +75,7 @@ public class FooterBar extends StackPane {
 
     private int oldWidth;
     private final int widthLimit = 1350;
+    private boolean updatingExerciseControls;
 
     public FooterBar(){
         StyleManager.putStyle(this, Style.ACCENT);
@@ -136,6 +153,8 @@ public class FooterBar extends StackPane {
 
         columnView.disableProperty().bind(MainWindow.mainScreen.isEditPagesModeProperty().or(MainWindow.mainScreen.statusProperty().isNotEqualTo(MainScreen.Status.OPEN)));
         gridView.disableProperty().bind(MainWindow.mainScreen.isEditPagesModeProperty().or(MainWindow.mainScreen.statusProperty().isNotEqualTo(MainScreen.Status.OPEN)));
+        
+        setupExerciseCorrectionControls();
 
         zoom.getChildren().addAll(zoomPercent, zoomController, getSpacerShape(), editPagesMode, getSpacerShape(), columnView, gridView);
 
@@ -237,14 +256,15 @@ public class FooterBar extends StackPane {
         if(status == MainScreen.Status.OPEN){
             if(hard){
                 if(getWidth() < widthLimit){
-                    root.getChildren().setAll(zoom, spacer, getSpacerShape(), this.status);
+                    root.getChildren().setAll(zoom, getSpacerShape(), exerciseCorrection, spacer, selectedElements, getSpacerShape(), this.status);
                 }else{
-                    root.getChildren().setAll(zoom, spacer, getSpacerShape(),
+                    root.getChildren().setAll(zoom, getSpacerShape(), exerciseCorrection, spacer, getSpacerShape(),
                             statsElements, getSpacerShape(), statsTexts, getSpacerShape(), statsGrades, getSpacerShape(), statsGraphics, getSpacerShape(), statsTotalGrade, getSpacerShape(),
-                            this.status);
+                            selectedElements, getSpacerShape(), this.status);
                 }
 
                 updateStats();
+                refreshExerciseChoices();
             }
             zoomController.setDisable(false);
             zoomPercent.setDisable(false);
@@ -293,6 +313,135 @@ public class FooterBar extends StackPane {
                 }
             });
         }
+    }
+    
+    private void setupExerciseCorrectionControls(){
+        exerciseCorrection.setAlignment(Pos.CENTER_LEFT);
+        exerciseCorrection.setSpacing(5);
+        
+        exerciseCorrectionMode.setTooltip(PaneUtils.genWrappedToolTip("Exercise correction mode: when switching files, jump to the selected exercise page."));
+        PaneUtils.setHBoxPosition(exerciseCorrectionMode, -1, 19, new Insets(-2, 0, 0, 0));
+        exerciseCorrectionMode.setOnAction(e -> {
+            ExerciseCorrectionData.requestSave();
+            if(exerciseCorrectionMode.isSelected()){
+                refreshExerciseChoices();
+                MainWindow.filesTab.preloadNeighborExercisePages();
+                navigateToSelectedExercisePage();
+            }
+        });
+        
+        exerciseSelector.setTooltip(PaneUtils.genWrappedToolTip("Exercise to correct."));
+        exerciseSelector.setPrefWidth(72);
+        exerciseSelector.setMaxHeight(19);
+        exerciseSelector.setOnAction(e -> {
+            if(updatingExerciseControls) return;
+            String selected = exerciseSelector.getSelectionModel().getSelectedItem();
+            if(selected != null) selectedExerciseKey = selected;
+            ExerciseCorrectionData.requestSave();
+            MainWindow.filesTab.preloadNeighborExercisePages();
+            navigateToSelectedExercisePage();
+        });
+        
+        exercisePages.setTooltip(PaneUtils.genWrappedToolTip("Set the page for each exercise."));
+        PaneUtils.setHBoxPosition(exercisePages, -1, 19, new Insets(-2, 0, 0, 0));
+        exercisePages.setOnAction(e -> {
+            if(!MainWindow.mainScreen.hasDocument(false)) return;
+            refreshExerciseChoices();
+            List<String> exerciseKeys = getExerciseKeys();
+            if(exerciseKeys.isEmpty()){
+                showToast(Color.web("#6a1b1b"), Color.WHITE, "Create the grading questions before assigning exercise pages.");
+                return;
+            }
+            boolean applied = new ExercisePageMappingDialog(exercisePageMapping, exerciseKeys, MainWindow.mainScreen.document.getPagesNumber()).show();
+            if(!applied) return;
+            ExerciseCorrectionData.requestSave();
+            MainWindow.filesTab.preloadNeighborExercisePages();
+            navigateToSelectedExercisePage();
+        });
+        
+        exerciseCorrectionMode.disableProperty().bind(MainWindow.mainScreen.statusProperty().isNotEqualTo(MainScreen.Status.OPEN));
+        exerciseSelector.disableProperty().bind(exerciseCorrectionMode.disableProperty());
+        exercisePages.disableProperty().bind(exerciseCorrectionMode.disableProperty());
+        
+        selectedElements.setStyle("-fx-text-fill: #b2b2b2;");
+        selectedElements.visibleProperty().bind(MainWindow.mainScreen.selectedElementsCountProperty().greaterThan(1));
+        selectedElements.managedProperty().bind(selectedElements.visibleProperty());
+        MainWindow.mainScreen.selectedElementsCountProperty().addListener((observable, oldValue, newValue) -> {
+            selectedElements.setText(newValue.intValue() + " selected");
+        });
+        selectedElements.setText("");
+        
+        exerciseCorrection.getChildren().addAll(exerciseCorrectionMode, exerciseSelector, exercisePages);
+        refreshExerciseChoices();
+    }
+    
+    private List<String> getExerciseKeys(){
+        if(!exerciseSelector.getItems().isEmpty()) return List.copyOf(exerciseSelector.getItems());
+        return ExercisePageMapping.buildQuestionKeys(getQuestionCountFromGradeScale());
+    }
+    
+    public void refreshExerciseChoices(){
+        if(MainWindow.gradeTab == null || MainWindow.gradeTab.treeView == null) return;
+        
+        updatingExerciseControls = true;
+        List<String> exerciseKeys = ExercisePageMapping.buildQuestionKeys(getQuestionCountFromGradeScale());
+        exerciseSelector.getItems().setAll(exerciseKeys);
+        if(exerciseKeys.contains(selectedExerciseKey)){
+            exerciseSelector.getSelectionModel().select(selectedExerciseKey);
+        }else if(!exerciseKeys.isEmpty()){
+            exerciseSelector.getSelectionModel().selectFirst();
+            selectedExerciseKey = exerciseSelector.getSelectionModel().getSelectedItem();
+        }
+        updatingExerciseControls = false;
+    }
+    
+    private int getQuestionCountFromGradeScale(){
+        if(GradeTreeView.getTotal() == null) return 0;
+        return GradeTreeView.getTotal().getChildren().size();
+    }
+    public int getExerciseCount(){
+        return getQuestionCountFromGradeScale();
+    }
+    
+    public boolean isExerciseCorrectionMode(){
+        return exerciseCorrectionMode.isSelected();
+    }
+    
+    public OptionalInt getSelectedExercisePageIndex(){
+        if(selectedExerciseKey == null) return OptionalInt.empty();
+        return exercisePageMapping.getPageIndex(selectedExerciseKey);
+    }
+    public ExercisePageMapping getExercisePageMapping(){
+        return exercisePageMapping;
+    }
+    public String getSelectedExerciseKey(){
+        return selectedExerciseKey;
+    }
+    public void setSelectedExerciseKey(String selectedExerciseKey){
+        if(selectedExerciseKey == null || selectedExerciseKey.isBlank()) return;
+        
+        this.selectedExerciseKey = selectedExerciseKey;
+        if(exerciseSelector.getItems().contains(selectedExerciseKey)){
+            updatingExerciseControls = true;
+            exerciseSelector.getSelectionModel().select(selectedExerciseKey);
+            updatingExerciseControls = false;
+        }
+    }
+    public OptionalInt getExercisePageIndex(String exerciseKey){
+        return exercisePageMapping.getPageIndex(exerciseKey);
+    }
+    
+    public void navigateToSelectedExercisePage(){
+        if(!isExerciseCorrectionMode() || !MainWindow.mainScreen.hasDocument(false)) return;
+        OptionalInt pageIndex = ExerciseCorrectionWorkflow.getNavigationTarget(true, getSelectedExercisePageIndex(), MainWindow.mainScreen.document.getPagesNumber());
+        if(pageIndex.isEmpty()) return;
+        int targetPageIndex = pageIndex.getAsInt();
+        MainWindow.mainScreen.setForceScrollToPage(targetPageIndex);
+        Platform.runLater(() -> {
+            if(!MainWindow.mainScreen.hasDocument(false)) return;
+            MainWindow.mainScreen.document.prefetchPages(targetPageIndex, ExerciseCorrectionWorkflow.getPrefetchLastPage(targetPageIndex, MainWindow.mainScreen.document.getPagesNumber()));
+            MainWindow.mainScreen.zoomOperator.scrollToPage(MainWindow.mainScreen.document.getPage(targetPageIndex));
+        });
     }
 
     public Node getEditPagesModeNode(){

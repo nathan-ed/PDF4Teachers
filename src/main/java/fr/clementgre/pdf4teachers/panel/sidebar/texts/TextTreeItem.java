@@ -9,6 +9,7 @@ import fr.clementgre.pdf4teachers.Main;
 import fr.clementgre.pdf4teachers.components.KeyableHBox;
 import fr.clementgre.pdf4teachers.components.ScratchText;
 import fr.clementgre.pdf4teachers.datasaving.Config;
+import fr.clementgre.pdf4teachers.datasaving.simpleconfigs.TextElementsData;
 import fr.clementgre.pdf4teachers.document.editions.elements.TextElement;
 import fr.clementgre.pdf4teachers.document.editions.undoEngine.UType;
 import fr.clementgre.pdf4teachers.document.render.display.PageRenderer;
@@ -79,6 +80,7 @@ public class TextTreeItem extends TreeItem<String> {
     private final ChangeListener<String> textChangeListener = (ObservableValue<? extends String> observable, String oldValue, String newValue) -> {
         setText(newValue);
         updateGraphic(true);
+        if(getType() == TextTreeSection.LAST_TYPE || getType() == TextTreeSection.FAVORITE_TYPE) TextElementsData.requestSave();
     };
     private final ChangeListener<Paint> colorChangeListener = (ObservableValue<? extends Paint> observable, Paint oldValue, Paint newValue) -> {
         setColor((Color) newValue);

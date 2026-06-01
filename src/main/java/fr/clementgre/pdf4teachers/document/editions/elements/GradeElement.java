@@ -253,7 +253,7 @@ public class GradeElement extends Element {
                 MenuItem menuItem = treeItem.getEditMenuItem(menu, getPage());
                 
                 menu.getItems().clear();
-                menu.getItems().addAll(menuItem, item1, item2, item3, item4);
+                menu.getItems().addAll(menuItem, item1, item2, item3, getSendToPageMenuItem(), item4);
                 if(treeItem.doContainsChildrenUnfilledAndAlwaysVisible()){
                     if(treeItem.hasSubGrade()) item5.setName(TR.tr("gradeTab.gradeMenu.hideUnfilledSubGrades"));
                     else item5.setName(TR.tr("gradeTab.gradeMenu.hideUnfilled"));
@@ -264,7 +264,7 @@ public class GradeElement extends Element {
             
         });
         
-        menu.getItems().addAll(item1, item2, item3, item4, item5);
+        menu.getItems().addAll(item1, item2, item3, getSendToPageMenuItem(), item4, item5);
         
         item1.setOnAction(e -> {
             GradeTreeItem treeItemElement = getGradeTreeItem();

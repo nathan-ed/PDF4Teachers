@@ -36,6 +36,8 @@ import java.util.stream.Collectors;
 
 public class Document {
     
+    private static final int PREFETCH_PAGES_AROUND_VIEWPORT = 2;
+    
     private final File file;
     public Edition edition;
     private final ArrayList<PageRenderer> pages = new ArrayList<>();
@@ -79,6 +81,9 @@ public class Document {
     }
     
     public void showPages(){
+        showPages(true);
+    }
+    public void showPages(boolean updateShowsStatus){
         
         for(int i = 0; i < numberOfPages; i++){
             PageRenderer page = new PageRenderer(i);
@@ -86,7 +91,7 @@ public class Document {
             pages.add(page);
         }
         getPage(0).updatePosition(PageRenderer.getPageMargin(), false);
-        updateShowsStatus();
+        if(updateShowsStatus) updateShowsStatus();
     }
     
     public void updatePagesPosition(){
@@ -98,6 +103,7 @@ public class Document {
         for(PageRenderer page : pages){
             page.updateShowStatus();
         }
+        prefetchPagesAroundViewport();
     }
     
     public void updateZoom(){
@@ -111,6 +117,29 @@ public class Document {
             page.setStatus(PageStatus.HIDE);
         }
         updateShowsStatus();
+    }
+    private void prefetchPagesAroundViewport(){
+        if(MainWindow.mainScreen.isEditPagesMode()) return;
+        
+        for(PageRenderer page : pages){
+            if(page.getShowStatus() != 0) continue;
+            
+            int firstPage = Math.max(0, page.getPage() - PREFETCH_PAGES_AROUND_VIEWPORT);
+            int lastPage = Math.min(numberOfPages - 1, page.getPage() + PREFETCH_PAGES_AROUND_VIEWPORT);
+            for(int i = firstPage; i <= lastPage; i++){
+                pages.get(i).prefetchRender();
+            }
+        }
+    }
+    
+    public void prefetchPages(int firstPage, int lastPage){
+        if(MainWindow.mainScreen.isEditPagesMode()) return;
+        
+        int from = Math.max(0, firstPage);
+        int to = Math.min(numberOfPages - 1, lastPage);
+        for(int i = from; i <= to; i++){
+            pages.get(i).prefetchRender();
+        }
     }
     
     public boolean loadEdition(boolean updateScrollValue){

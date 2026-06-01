@@ -371,8 +371,13 @@ public class ZoomOperator {
         else pane.setTranslateY(newTranslateY);
     }
     public void scrollToPage(PageRenderer page){
-        int toScroll = (int) ((getPaneY() - getPaneShiftY()) + (page.getTranslateY() - PageRenderer.getPageMargin() + 5) * getPaneScale());
-        scrollByTranslateY(toScroll, false, false);
+        double targetY = getPaneShiftY() - (page.getTranslateY() - PageRenderer.getPageMargin() + 5) * getPaneScale();
+        targetY = MathUtils.clamp(targetY, -getScrollableHeight() + getPaneShiftY(), getPaneShiftY());
+        scrollByTranslateY(targetY, false);
+        
+        if(MainWindow.mainScreen.hasDocument(false)){
+            MainWindow.mainScreen.document.updateShowsStatus();
+        }
     }
     
     // H SCROLL

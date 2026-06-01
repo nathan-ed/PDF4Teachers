@@ -19,6 +19,7 @@ import fr.clementgre.pdf4teachers.panel.MainScreen.MainScreen;
 import fr.clementgre.pdf4teachers.panel.sidebar.SideBar;
 import fr.clementgre.pdf4teachers.panel.sidebar.grades.GradeTreeItem;
 import fr.clementgre.pdf4teachers.panel.sidebar.grades.GradeTreeView;
+import fr.clementgre.pdf4teachers.panel.sidebar.grades.PNFAnnotationManager;
 import fr.clementgre.pdf4teachers.panel.sidebar.paint.PaintTab;
 import fr.clementgre.pdf4teachers.panel.sidebar.paint.gridviewfactory.ImageGridElement;
 import fr.clementgre.pdf4teachers.panel.sidebar.paint.gridviewfactory.VectorGridElement;
@@ -434,7 +435,7 @@ public class PageRenderer extends Pane {
                 
                 setCursor(Cursor.CROSSHAIR);
             }else{
-                if(e.getButton() == MouseButton.SECONDARY) showContextMenu(e.getY(), e.getScreenX(), e.getScreenY());
+                if(e.getButton() == MouseButton.SECONDARY) showContextMenu(e.getX(), e.getY(), e.getScreenX(), e.getScreenY());
                 else{
                     
                     if(e.getClickCount() == 2 && !MainWindow.mainScreen.isEditPagesMode()){
@@ -616,7 +617,11 @@ public class PageRenderer extends Pane {
         
     }
     
-    public void showContextMenu(double pageY, double screenX, double screenY){
+    public void showContextMenu(double pageX, double pageY, double screenX, double screenY){
+        NodeMenuItem pnfMenuItem = new NodeMenuItem("Add PNF", false);
+        pnfMenuItem.setOnAction(e -> PNFAnnotationManager.addPNF(this, pageX, pageY));
+        menu.getItems().add(pnfMenuItem);
+        
         if(!MainWindow.gradeTab.treeView.getRoot().getChildren().isEmpty()){
             GradeTreeView.defineNaNLocations();
             GradeTreeItem logicalNextGrade = GradeTreeView.getNextLogicGrade();
@@ -927,6 +932,9 @@ public class PageRenderer extends Pane {
                 setCursor(Cursor.WAIT);
                 
                 render(null);
+            }else if(status == PageStatus.RENDERING){
+                loader.setVisible(true);
+                setCursor(Cursor.WAIT);
             }else{
                 updateZoom();
             }
@@ -949,13 +957,21 @@ public class PageRenderer extends Pane {
         }
     }
     
-    private double getRenderingZoomFactor(){
+    public static double getRenderingZoomFactorForCurrentSettings(){
         if(Main.settings.renderWithZoom.getValue()){
             return Math.min(MainWindow.mainScreen.getZoomFactor(), 3) * Main.settings.renderZoom.getValue();
         }else{
             return 1.5 * Main.settings.renderZoom.getValue();
         }
-        
+    }
+    public static int getRenderWidthForCurrentSettings(){
+        return getRenderWidth(getRenderingZoomFactorForCurrentSettings());
+    }
+    public static int getRenderWidth(double renderingZoomFactor){
+        return (int) Math.max(1, PAGE_WIDTH * 1.4 * renderingZoomFactor);
+    }
+    private double getRenderingZoomFactor(){
+        return getRenderingZoomFactorForCurrentSettings();
     }
     
     private void render(CallBack callBack){
@@ -986,6 +1002,35 @@ public class PageRenderer extends Pane {
             status = PageStatus.RENDERED;
             if(callBack != null) callBack.call();
         });
+    }
+    public void prefetchRender(){
+        if(removed || status != PageStatus.HIDE) return;
+        
+        status = PageStatus.RENDERING;
+        renderedZoomFactor = getRenderingZoomFactor();
+        
+        MainWindow.mainScreen.document.pdfPagesRender.renderPage(this, renderedZoomFactor, (image) -> {
+            if(removed || status == PageStatus.HIDE) return;
+            
+            if(image == null){
+                status = PageStatus.FAIL;
+                return;
+            }
+            
+            setBackground(new Background(
+                    Collections.singletonList(new BackgroundFill(
+                            javafx.scene.paint.Color.WHITE,
+                            CornerRadii.EMPTY,
+                            Insets.EMPTY)),
+                    Collections.singletonList(new BackgroundImage(
+                            image,
+                            BackgroundRepeat.NO_REPEAT,
+                            BackgroundRepeat.NO_REPEAT,
+                            BackgroundPosition.CENTER,
+                            new BackgroundSize(getWidth(), getHeight(), false, false, false, true)))));
+            
+            status = PageStatus.RENDERED;
+        }, false);
     }
     
     // COORDINATES

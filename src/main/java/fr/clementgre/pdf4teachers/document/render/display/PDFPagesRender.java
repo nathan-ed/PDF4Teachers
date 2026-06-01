@@ -31,10 +31,28 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class PDFPagesRender {
     
+    private record RenderCacheKey(String filePath, long lastModified, int page, int width) {}
     private record RenderPending(PageRenderer page, int width, CallBackArg<Image> callBack) {}
+    private static final int MAX_PRELOADED_PAGES = 8;
+    private static final Map<RenderCacheKey, Image> preloadedPages = new LinkedHashMap<>(16, .75f, true){
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<RenderCacheKey, Image> eldest){
+            return size() > MAX_PRELOADED_PAGES;
+        }
+    };
+    private static final ExecutorService preloadExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "PDF Exercise Page Preloader");
+        thread.setDaemon(true);
+        return thread;
+    });
+    
     
     private final File file;
     public PDFPagesEditor editor;
@@ -99,12 +117,12 @@ public class PDFPagesRender {
     private void setupThread(){
         new Thread(() -> {
             while(!shouldClose){ // not closed
-                if(!pauseRendering && !pauseRenderingInner && !rendersPending.isEmpty() && !rendersPending.getFirst().page.isRemoved()){ // Render
-                    if(rendersPending.getFirst().page.getPage() < getNumberOfPages()){
-                        renderPage(rendersPending.getFirst());
+                RenderPending renderPending = pollRenderPending();
+                if(!pauseRendering && !pauseRenderingInner && renderPending != null){ // Render
+                    if(renderPending.page.getPage() < getNumberOfPages()){
+                        renderPage(renderPending);
                     }else
-                        Log.w("Unable to render page " + rendersPending.getFirst().page.getPage() + " (index out of bounds : page doesn't exist)");
-                    rendersPending.removeFirst();
+                        Log.w("Unable to render page " + renderPending.page.getPage() + " (index out of bounds : page doesn't exist)");
                 }else{ // Wait
                     PlatformUtils.sleepThread(100);
                 }
@@ -136,40 +154,118 @@ public class PDFPagesRender {
             }
         }, "Page Editor Saver").start();
     }
+    private RenderPending pollRenderPending(){
+        if(pauseRendering || pauseRenderingInner) return null;
+        
+        synchronized(rendersPending){
+            while(!rendersPending.isEmpty()){
+                RenderPending renderPending = rendersPending.removeFirst();
+                if(!renderPending.page.isRemoved()) return renderPending;
+            }
+        }
+        return null;
+    }
+    public void clearPendingRenders(){
+        synchronized(rendersPending){
+            rendersPending.clear();
+        }
+    }
     
     private void renderPage(RenderPending renderPending){
-        PDRectangle pageSize = getPageRotatedCropBox(renderPending.page.getPage());
-        
-        BufferedImage renderImage = new BufferedImage(Math.max(1, renderPending.width), (int) Math.max(1, pageSize.getHeight() / pageSize.getWidth() * ((double) renderPending.width)), BufferedImage.TYPE_INT_ARGB);
-        Graphics2D graphics = renderImage.createGraphics();
-        graphics.setBackground(Color.WHITE);
-        
+        RenderCacheKey cacheKey = cacheKey(file, renderPending.page.getPage(), renderPending.width);
+        Image cachedImage = getPreloadedPage(cacheKey);
+        if(cachedImage != null){
+            Platform.runLater(() -> renderPending.callBack.call(cachedImage));
+            return;
+        }
+    
+        BufferedImage renderImage = null;
         try{
-            pdfRenderer.renderPageToGraphics(renderPending.page.getPage(), graphics,
-                    (float) renderPending.width / pageSize.getWidth(),
-                    (float) renderPending.width / pageSize.getWidth(),
-                    RenderDestination.VIEW);
+            renderImage = renderPageToImage(document, pdfRenderer, renderPending.page.getPage(), renderPending.width);
             
             if(renderPending.page.isRemoved()){
                 // Nothing
             }else if(document == null){
                 Platform.runLater(() -> renderPending.callBack.call(null));
             }else{
-                Platform.runLater(() -> renderPending.callBack.call(SwingFXUtils.toFXImage(renderImage, null)));
+                Image image = SwingFXUtils.toFXImage(renderImage, null);
+                Platform.runLater(() -> renderPending.callBack.call(image));
             }
-            graphics.dispose();
         }catch(Exception e){
             Log.eNotified(e);
             Platform.runLater(() -> renderPending.callBack.call(null));
         }
         
-        renderImage.flush();
-        System.gc(); // clear unused element in RAM
+        if(renderImage != null) renderImage.flush();
     }
     
     public void renderPage(PageRenderer page, double size, CallBackArg<Image> callBack){
+        renderPage(page, size, callBack, true);
+    }
+    public void renderPage(PageRenderer page, double size, CallBackArg<Image> callBack, boolean priority){
         // *1=595 | *1.5=892 |*2=1190
-        rendersPending.add(new RenderPending(page, (int) Math.max(1, 595 * 1.4 * size), callBack));
+        RenderPending renderPending = new RenderPending(page, PageRenderer.getRenderWidth(size), callBack);
+        Image cachedImage = getPreloadedPage(cacheKey(file, page.getPage(), renderPending.width));
+        if(cachedImage != null){
+            Platform.runLater(() -> callBack.call(cachedImage));
+            return;
+        }
+        synchronized(rendersPending){
+            rendersPending.removeIf(pending -> pending.page == page && pending.callBack == null);
+            if(priority) rendersPending.addFirst(renderPending);
+            else rendersPending.add(renderPending);
+        }
+    }
+    
+    public static void preloadPages(File file, int firstPage, int lastPage, int width){
+        if(file == null || width <= 0) return;
+        
+        preloadExecutor.submit(() -> {
+            try(PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file))){
+                PDFRenderer renderer = new PDFRenderer(document);
+                int from = Math.max(0, firstPage);
+                int to = Math.min(document.getNumberOfPages() - 1, lastPage);
+                for(int page = from; page <= to; page++){
+                    RenderCacheKey cacheKey = cacheKey(file, page, width);
+                    if(getPreloadedPage(cacheKey) != null) continue;
+                    BufferedImage renderImage = renderPageToImage(document, renderer, page, width);
+                    putPreloadedPage(cacheKey, SwingFXUtils.toFXImage(renderImage, null));
+                    renderImage.flush();
+                }
+            }catch(Exception e){
+                Log.eNotified(e);
+            }
+        });
+    }
+    
+    private static BufferedImage renderPageToImage(PDDocument document, PDFRenderer renderer, int pageNumber, int width) throws IOException{
+        PDRectangle pageSize = getPageRotatedCropBox(document, pageNumber);
+        BufferedImage renderImage = new BufferedImage(Math.max(1, width), (int) Math.max(1, pageSize.getHeight() / pageSize.getWidth() * ((double) width)), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = renderImage.createGraphics();
+        graphics.setBackground(Color.WHITE);
+        try{
+            renderer.renderPageToGraphics(pageNumber, graphics,
+                    (float) width / pageSize.getWidth(),
+                    (float) width / pageSize.getWidth(),
+                    RenderDestination.VIEW);
+            return renderImage;
+        }finally{
+            graphics.dispose();
+        }
+    }
+    
+    private static RenderCacheKey cacheKey(File file, int page, int width){
+        return new RenderCacheKey(file.getAbsolutePath(), file.lastModified(), page, width);
+    }
+    private static Image getPreloadedPage(RenderCacheKey key){
+        synchronized(preloadedPages){
+            return preloadedPages.get(key);
+        }
+    }
+    private static void putPreloadedPage(RenderCacheKey key, Image image){
+        synchronized(preloadedPages){
+            preloadedPages.put(key, image);
+        }
     }
     
     public BufferedImage renderPageBasic(int pageNumber, int width, int height){
@@ -231,6 +327,9 @@ public class PDFPagesRender {
     }
     
     public PDRectangle getPageRotatedCropBox(int pageNumber){
+        return getPageRotatedCropBox(document, pageNumber);
+    }
+    private static PDRectangle getPageRotatedCropBox(PDDocument document, int pageNumber){
         PDPage page = document.getPage(pageNumber);
         PDRectangle pageSize;
         if(page.getRotation() == 90 || page.getRotation() == 270)

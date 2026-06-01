@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
 public class GradeTreeView extends TreeView<String> {
     
     private ScrollBar verticalScrollbar;
+    private boolean deferExerciseChoicesRefresh;
+    private boolean exerciseChoicesRefreshPending;
     
     public GradeTreeView(GradeTab gradeTab){
         getStyleClass().add("grade-tree-view");
@@ -97,6 +99,7 @@ public class GradeTreeView extends TreeView<String> {
         }
         if(regenerateRoot) generateRoot(false);
         else setRoot(null);
+        refreshExerciseChoices();
     }
     
     private void generateRoot(boolean update){
@@ -114,11 +117,13 @@ public class GradeTreeView extends TreeView<String> {
             item.setExpanded(true);
             setRoot(item);
             getSelectionModel().select(getRoot());
+            refreshExerciseChoices();
             
         }else{ // CHILD
             GradeTreeItem treeElement = element.toGradeTreeItem();
             addToList(getGradeTreeItemParent(element), treeElement);
             treeElement.setExpanded(true);
+            refreshExerciseChoices();
         }
     }
     
@@ -133,6 +138,7 @@ public class GradeTreeView extends TreeView<String> {
             if(!getRootTreeItem().isDeleted()) getRootTreeItem().delete(false, markAsUnsave, UType.ELEMENT);
             // Remove the item from its parent
             setRoot(null);
+            refreshExerciseChoices();
             
         }else{ // CHILD
             GradeTreeItem treeElement = getGradeTreeItem((GradeTreeItem) getRoot(), element);
@@ -149,6 +155,7 @@ public class GradeTreeView extends TreeView<String> {
                 parent.reIndexChildren();
                 parent.makeSum(false);
             }
+            refreshExerciseChoices();
         }
     }
     
@@ -387,5 +394,22 @@ public class GradeTreeView extends TreeView<String> {
     public double getVScrollbarVisibleWidth(){
         if(verticalScrollbar == null) return 0;
         return verticalScrollbar.isVisible() ? verticalScrollbar.getWidth() : 0;
+    }
+    
+    private void refreshExerciseChoices(){
+        if(deferExerciseChoicesRefresh){
+            exerciseChoicesRefreshPending = true;
+            return;
+        }
+        if(MainWindow.footerBar != null) Platform.runLater(() -> MainWindow.footerBar.refreshExerciseChoices());
+    }
+    public void beginDeferredExerciseChoicesRefresh(){
+        deferExerciseChoicesRefresh = true;
+        exerciseChoicesRefreshPending = false;
+    }
+    public void endDeferredExerciseChoicesRefresh(){
+        deferExerciseChoicesRefresh = false;
+        if(exerciseChoicesRefreshPending) refreshExerciseChoices();
+        exerciseChoicesRefreshPending = false;
     }
 }

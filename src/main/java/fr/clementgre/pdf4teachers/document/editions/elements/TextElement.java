@@ -152,7 +152,7 @@ public class TextElement extends Element {
         item3.setToolTip(TR.tr("elementMenu.addToPreviousList.tooltip"));
         NodeMenuItem item4 = new NodeMenuItem(TR.tr("elementMenu.addToFavouriteList"), false);
         item4.setToolTip(TR.tr("elementMenu.addToFavouritesList.tooltip"));
-        menu.getItems().addAll(item1, item2, item5, item4, item3);
+        menu.getItems().addAll(item1, item2, getSendToPageMenuItem(), item5, item4, item3);
         NodeMenuItem.setupMenu(menu);
         
         item1.setOnAction(e -> delete(true, UType.ELEMENT));

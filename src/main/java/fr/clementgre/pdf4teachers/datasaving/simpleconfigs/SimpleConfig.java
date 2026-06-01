@@ -21,6 +21,7 @@ public abstract class SimpleConfig {
         UserData.registerSimpleConfig(new VectorElementsData());
         UserData.registerSimpleConfig(new SkillsAssessmentData());
         UserData.registerSimpleConfig(new SystemFontsData());
+        UserData.registerSimpleConfig(new ExerciseCorrectionData());
     }
     
     private final String filename;

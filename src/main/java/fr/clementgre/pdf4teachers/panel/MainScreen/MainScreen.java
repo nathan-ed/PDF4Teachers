@@ -49,6 +49,8 @@ import javafx.scene.text.TextAlignment;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 import static fr.clementgre.pdf4teachers.document.render.display.PageRenderer.PAGE_WIDTH;
@@ -66,6 +68,8 @@ public class MainScreen extends Pane {
     
     private final IntegerProperty status = new SimpleIntegerProperty(Status.CLOSED);
     private final ObjectProperty<Element> selected = new SimpleObjectProperty<>();
+    private final LinkedHashSet<Element> additionalSelected = new LinkedHashSet<>();
+    private final IntegerProperty selectedElementsCount = new SimpleIntegerProperty(0);
     private final ObjectProperty<GraphicElement> toPlace = new SimpleObjectProperty<>();
     
     public Document document;
@@ -555,6 +559,7 @@ public class MainScreen extends Pane {
         boolean hadOpenedFile = status.get() == Status.OPEN;
         double oldPaneScale = zoomOperator.getPaneScale();
         if(!closeFile(!Main.settings.autoSave.getValue(), false, false)){
+            forceScrollToPage = -1;
             return;
         }
         
@@ -573,6 +578,7 @@ public class MainScreen extends Pane {
             }
             status.set(Status.OPEN);
             MainWindow.filesTab.files.getSelectionModel().select(file);
+            if(MainWindow.footerBar != null) MainWindow.footerBar.refreshExerciseChoices();
             
             // Zoom #1. If had opened file, keep same zoom factor (must be done before document.loadEdition that puts the right scrollVValue).
             if(!hadOpenedFile){
@@ -580,8 +586,9 @@ public class MainScreen extends Pane {
                 else zoomOperator.fitWidth(true, false);
             }else zoomOperator.zoom(oldPaneScale, true);
             
+            boolean hasForcedPageJump = forceScrollToPage >= 0 && !MainWindow.userData.editPagesMode;
             zoomOperator.vScrollBar.setValue(0);
-            document.showPages();
+            document.showPages(!hasForcedPageJump);
             try{
                 document.loadEdition(!resetScrollValue);
             }catch(Exception e){
@@ -609,19 +616,20 @@ public class MainScreen extends Pane {
                 PlatformUtils.runLaterOnUIThread(500, () -> zoomOperator.updatePaneDimensions(0, 0.5));
             }else{
                 // Check if we should force scroll to a specific page (used for LEFT/RIGHT navigation)
-                if(forceScrollToPage >= 0 && forceScrollToPage < document.getPagesNumber()){
-                    int targetPageNum = forceScrollToPage;
+                if(forceScrollToPage >= 0){
+                    int targetPageNum = Math.min(forceScrollToPage, document.getPagesNumber() - 1);
                     forceScrollToPage = -1; // Reset before scrolling
 
                     // First update dimensions with default scroll (0 = top)
                     zoomOperator.updatePaneDimensions(0, 0.5);
 
-                    // Then scroll to the target page after layout is complete
-                    // Using longer delay to ensure all layout operations have settled
-                    PlatformUtils.runLaterOnUIThread(500, () -> {
+                    // Then jump to the target page after the current JavaFX layout pass.
+                    Platform.runLater(() -> {
                         PageRenderer targetPage = document.getPage(targetPageNum);
                         if(targetPage != null){
                             zoomOperator.scrollToPage(targetPage);
+                            document.prefetchPages(targetPageNum, targetPageNum + 1);
+                            MainWindow.filesTab.preloadNeighborExercisePages();
                         }
                     });
                 }else{
@@ -799,8 +807,66 @@ public class MainScreen extends Pane {
         return selected;
     }
     public void setSelected(Element selected){
+        setSelected(selected, true);
+    }
+    private void setSelected(Element selected, boolean clearAdditional){
+        if(clearAdditional) clearAdditionalSelected(selected);
         //Log.d("select " + (selected == null ? "null " : selected.getClass().getSimpleName()));
         this.selected.set(selected);
+        updateSelectedElementsCount();
+    }
+    public boolean isElementSelected(Element element){
+        return selected.get() == element || additionalSelected.contains(element);
+    }
+    public List<Element> getSelectedElements(){
+        ArrayList<Element> elements = new ArrayList<>();
+        if(selected.get() != null) elements.add(selected.get());
+        elements.addAll(additionalSelected);
+        return elements;
+    }
+    public boolean hasMultipleSelectedElements(){
+        return getSelectedElements().size() > 1;
+    }
+    public void toggleSelectedElement(Element element){
+        if(element == null) return;
+        
+        if(selected.get() == null){
+            setSelected(element, false);
+            return;
+        }
+        
+        if(selected.get() == element){
+            if(additionalSelected.isEmpty()){
+                setSelected(null, false);
+            }else{
+                Element nextPrimary = additionalSelected.getFirst();
+                additionalSelected.remove(nextPrimary);
+                selected.set(nextPrimary);
+                updateSelectedElementsCount();
+            }
+            return;
+        }
+        
+        if(additionalSelected.remove(element)) element.updateSelectionStyle();
+        else{
+            additionalSelected.add(element);
+            element.updateSelectionStyle();
+        }
+        updateSelectedElementsCount();
+    }
+    private void clearAdditionalSelected(Element keepSelected){
+        ArrayList<Element> toClear = new ArrayList<>(additionalSelected);
+        additionalSelected.clear();
+        for(Element element : toClear){
+            if(element != keepSelected) element.updateSelectionStyle();
+        }
+        updateSelectedElementsCount();
+    }
+    private void updateSelectedElementsCount(){
+        selectedElementsCount.set(getSelectedElements().size());
+    }
+    public IntegerProperty selectedElementsCountProperty(){
+        return selectedElementsCount;
     }
     
     public GraphicElement getToPlace(){

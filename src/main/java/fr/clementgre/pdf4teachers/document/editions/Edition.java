@@ -35,12 +35,28 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 @SuppressWarnings("unchecked")
 public class Edition{
+    
+    private record PreloadedEditFile(File editFile, long lastModified, HashMap<String, Object> base) {}
+    private static final int MAX_PRELOADED_EDITIONS = 6;
+    private static final Map<String, PreloadedEditFile> preloadedEditions = new LinkedHashMap<>(12, .75f, true){
+        @Override
+        protected boolean removeEldestEntry(Map.Entry<String, PreloadedEditFile> eldest){
+            return size() > MAX_PRELOADED_EDITIONS;
+        }
+    };
+    private static final ExecutorService preloadExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "Edition Preloader");
+        thread.setDaemon(true);
+        return thread;
+    });
     
     private final File file;
     private final File editFile;
@@ -61,8 +77,7 @@ public class Edition{
         
         try{
             if(!editFile.exists()) return true; // File does not exist
-            Config config = new Config(editFile);
-            config.load();
+            Config config = loadConfig(editFile);
             int versionID = (int) config.getLong("versionID");
     
             boolean upscaleGrid = versionID == 0; // Between 1.2.1 and 1.3.0, the grid size was multiplied by 100
@@ -82,8 +97,13 @@ public class Edition{
             // There is only one SkillTableElement (the grid) that contains all the skills
             SkillTableElement.readYAMLDataAndCreate(config.getSection("skills"));
             
-            for(Object data : config.getList("grades")){
-                if(data instanceof Map) GradeElement.readYAMLDataAndCreate((HashMap<String, Object>) data, upscaleGrid);
+            MainWindow.gradeTab.treeView.beginDeferredExerciseChoicesRefresh();
+            try{
+                for(Object data : config.getList("grades")){
+                    if(data instanceof Map) GradeElement.readYAMLDataAndCreate((HashMap<String, Object>) data, upscaleGrid);
+                }
+            }finally{
+                MainWindow.gradeTab.treeView.endDeferredExerciseChoicesRefresh();
             }
             
             isSave.set(true);
@@ -162,6 +182,7 @@ public class Edition{
                 config.base.put("skills", skills);
                 config.set("versionID", Main.VERSION_ID);
                 config.save();
+                removePreloadedEditFile(editFile);
             }
             
         }catch(IOException e){
@@ -183,8 +204,50 @@ public class Edition{
             config.base.put("lastScrollValue", document.getLastScrollValue());
             
             config.save();
+            removePreloadedEditFile(editFile);
         }catch(Exception e){
             Log.eNotified(e);
+        }
+    }
+    
+    public static void preloadEditFile(File pdfFile){
+        if(pdfFile == null) return;
+        
+        File editFile = getEditFile(pdfFile);
+        if(!editFile.exists()) return;
+        
+        preloadExecutor.submit(() -> {
+            try{
+                loadConfig(editFile);
+            }catch(Exception e){
+                Log.eNotified(e);
+            }
+        });
+    }
+    
+    private static Config loadConfig(File editFile) throws IOException{
+        String cacheKey = editFile.getAbsolutePath();
+        long lastModified = editFile.lastModified();
+        synchronized(preloadedEditions){
+            PreloadedEditFile preloaded = preloadedEditions.get(cacheKey);
+            if(preloaded != null && preloaded.lastModified == lastModified){
+                Config config = new Config(editFile);
+                config.base = new HashMap<>(preloaded.base);
+                return config;
+            }
+        }
+        
+        Config config = new Config(editFile);
+        config.load();
+        synchronized(preloadedEditions){
+            preloadedEditions.put(cacheKey, new PreloadedEditFile(editFile, lastModified, new HashMap<>(config.base)));
+        }
+        return config;
+    }
+    
+    private static void removePreloadedEditFile(File editFile){
+        synchronized(preloadedEditions){
+            preloadedEditions.remove(editFile.getAbsolutePath());
         }
     }
     

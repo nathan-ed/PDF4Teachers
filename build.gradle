@@ -88,6 +88,8 @@ dependencies {
     implementation 'net.java.dev.jna:jna:5.12.1'
     implementation 'net.java.dev.jna:jna-platform:5.12.1'
     implementation 'org.jetbrains:annotations:24.0.0'
+    
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
 }
 
 def os = org.gradle.internal.os.OperatingSystem.current()
@@ -134,6 +136,10 @@ run {
     }else if(os.windows){
 
     }
+}
+
+test {
+    useJUnitPlatform()
 }
 
 if(os.windows){
@@ -328,5 +334,4 @@ jlink {
                 'com.github.jaiimageio.jpeg2000.impl.J2KImageWriterSpi'
     }
 }
-
 
