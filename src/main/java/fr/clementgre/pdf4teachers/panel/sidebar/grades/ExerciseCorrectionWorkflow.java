@@ -31,4 +31,22 @@ public class ExerciseCorrectionWorkflow {
         if(topLevelParentIndex < 0) throw new IllegalArgumentException("topLevelParentIndex must be positive or zero.");
         return "Q" + (topLevelParentIndex + 1);
     }
+    
+    public static int getNewGradePageIndex(boolean parentIsRoot, OptionalInt mappedExercisePage, int fallbackPageIndex, int pagesCount){
+        if(pagesCount <= 0) throw new IllegalArgumentException("pagesCount must be positive.");
+        if(parentIsRoot) return 0;
+        
+        int targetPageIndex = mappedExercisePage.orElse(fallbackPageIndex);
+        if(targetPageIndex < 0) targetPageIndex = 0;
+        return Math.min(targetPageIndex, pagesCount - 1);
+    }
+    
+    public static int getGeneratedGradePageIndex(boolean summaryRow, OptionalInt mappedExercisePage, int fallbackPageIndex, int pagesCount){
+        if(pagesCount <= 0) throw new IllegalArgumentException("pagesCount must be positive.");
+        if(summaryRow) return 0;
+        
+        int targetPageIndex = mappedExercisePage.orElse(fallbackPageIndex);
+        if(targetPageIndex < 0) targetPageIndex = 0;
+        return Math.min(targetPageIndex, pagesCount - 1);
+    }
 }

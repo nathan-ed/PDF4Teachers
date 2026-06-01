@@ -73,4 +73,51 @@ class ExerciseCorrectionWorkflowTest {
         assertThrows(IllegalArgumentException.class, () -> ExerciseCorrectionWorkflow.getNewGradeExerciseKey(true, -1, -1));
         assertThrows(IllegalArgumentException.class, () -> ExerciseCorrectionWorkflow.getNewGradeExerciseKey(false, -1, -1));
     }
+    
+    @Test
+    void newTopLevelGradeStaysOnFirstPage(){
+        assertEquals(0, ExerciseCorrectionWorkflow.getNewGradePageIndex(true, OptionalInt.of(4), 3, 8));
+    }
+    
+    @Test
+    void newSubGradeUsesMappedExercisePage(){
+        assertEquals(4, ExerciseCorrectionWorkflow.getNewGradePageIndex(false, OptionalInt.of(4), 0, 8));
+    }
+    
+    @Test
+    void newSubGradeFallsBackToCurrentPageWhenUnmapped(){
+        assertEquals(2, ExerciseCorrectionWorkflow.getNewGradePageIndex(false, OptionalInt.empty(), 2, 8));
+    }
+    
+    @Test
+    void newGradePageIndexClampsToDocumentBounds(){
+        assertEquals(7, ExerciseCorrectionWorkflow.getNewGradePageIndex(false, OptionalInt.of(20), 2, 8));
+        assertEquals(0, ExerciseCorrectionWorkflow.getNewGradePageIndex(false, OptionalInt.empty(), -2, 8));
+    }
+    
+    @Test
+    void newGradePageIndexRejectsEmptyDocuments(){
+        assertThrows(IllegalArgumentException.class, () -> ExerciseCorrectionWorkflow.getNewGradePageIndex(true, OptionalInt.empty(), 0, 0));
+    }
+    
+    @Test
+    void generatedSummaryRowsStayOnFirstPage(){
+        assertEquals(0, ExerciseCorrectionWorkflow.getGeneratedGradePageIndex(true, OptionalInt.of(5), 3, 8));
+    }
+    
+    @Test
+    void generatedSubQuestionUsesMappedExercisePage(){
+        assertEquals(5, ExerciseCorrectionWorkflow.getGeneratedGradePageIndex(false, OptionalInt.of(5), 1, 8));
+    }
+    
+    @Test
+    void generatedSubQuestionFallsBackToExistingPageWhenUnmapped(){
+        assertEquals(3, ExerciseCorrectionWorkflow.getGeneratedGradePageIndex(false, OptionalInt.empty(), 3, 8));
+    }
+    
+    @Test
+    void generatedGradePageIndexClampsToDocumentBounds(){
+        assertEquals(7, ExerciseCorrectionWorkflow.getGeneratedGradePageIndex(false, OptionalInt.of(12), 3, 8));
+        assertEquals(0, ExerciseCorrectionWorkflow.getGeneratedGradePageIndex(false, OptionalInt.empty(), -1, 8));
+    }
 }

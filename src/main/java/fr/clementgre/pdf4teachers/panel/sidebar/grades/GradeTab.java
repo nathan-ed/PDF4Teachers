@@ -8,7 +8,9 @@ package fr.clementgre.pdf4teachers.panel.sidebar.grades;
 import fr.clementgre.pdf4teachers.components.HBoxSpacer;
 import fr.clementgre.pdf4teachers.components.IconButton;
 import fr.clementgre.pdf4teachers.components.IconToggleButton;
+import fr.clementgre.pdf4teachers.document.editions.Edition;
 import fr.clementgre.pdf4teachers.document.editions.elements.GradeElement;
+import fr.clementgre.pdf4teachers.document.editions.undoEngine.MoveUndoAction;
 import fr.clementgre.pdf4teachers.document.editions.undoEngine.UType;
 import fr.clementgre.pdf4teachers.document.render.display.PageRenderer;
 import fr.clementgre.pdf4teachers.interfaces.autotips.AutoTipsManager;
@@ -29,6 +31,7 @@ import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.OptionalInt;
 
@@ -43,6 +46,7 @@ public class GradeTab extends SideTab {
     public static HashMap<Integer, TiersFont> fontTiers = new HashMap<>();
     
     public ToggleButton lockGradeScale = new IconToggleButton(SVGPathIcons.LOCK, SVGPathIcons.LOCK_OPEN, TR.tr("gradeTab.lockGradeScale.tooltip"), null, true);
+    private final Button generatePositions = new IconButton(SVGPathIcons.LAYERS, "Generate grade positions", e -> generateGradePositions(), true);
     private final Button settings = new IconButton(SVGPathIcons.GEAR, TR.tr("gradeTab.gradeFormatWindow.accessButton.tooltip"), e -> new GradeSettingsWindow(), true);
     private final Button link = new IconButton(SVGPathIcons.LINK, TR.tr("gradeTab.copyGradeScaleDialog.accessButton.tooltip"), e -> new GradeCopyGradeScaleDialog().show(), true);
     private final Button export = new IconButton(SVGPathIcons.EXPORT, TR.tr("gradeTab.gradeExportWindow.accessButton"), e -> {
@@ -76,7 +80,7 @@ public class GradeTab extends SideTab {
         });
         
         optionPane.setPadding(new Insets(5, 0, 5, 0));
-        optionPane.getChildren().addAll(new HBoxSpacer(), lockGradeScale, settings, link, export);
+        optionPane.getChildren().addAll(new HBoxSpacer(), lockGradeScale, generatePositions, settings, link, export);
         
         treeView = new GradeTreeView(this);
         pane.getChildren().addAll(optionPane, treeView);
@@ -107,13 +111,59 @@ public class GradeTab extends SideTab {
     }
     
     private PageRenderer getPageForNewGrade(GradeTreeItem parent){
-        OptionalInt mappedPage = MainWindow.footerBar != null ? MainWindow.footerBar.getExercisePageIndex(getExerciseKeyForNewGrade(parent)) : OptionalInt.empty();
-        if(mappedPage.isPresent()){
-            int pageIndex = Math.min(mappedPage.getAsInt(), MainWindow.mainScreen.document.getPagesNumber() - 1);
-            return MainWindow.mainScreen.document.getPage(pageIndex);
+        PageRenderer fallbackPage = MainWindow.mainScreen.document.getLastCursorOverPageObject();
+        int fallbackPageIndex = fallbackPage == null ? 0 : fallbackPage.getPage();
+        OptionalInt mappedPage = !parent.isRoot() && MainWindow.footerBar != null ? MainWindow.footerBar.getExercisePageIndex(getExerciseKeyForNewGrade(parent)) : OptionalInt.empty();
+        int pageIndex = ExerciseCorrectionWorkflow.getNewGradePageIndex(parent.isRoot(), mappedPage, fallbackPageIndex, MainWindow.mainScreen.document.getPagesNumber());
+        return MainWindow.mainScreen.document.getPage(pageIndex);
+    }
+    
+    private void generateGradePositions(){
+        if(!MainWindow.mainScreen.hasDocument(false) || GradeTreeView.getTotal() == null){
+            return;
         }
         
-        return MainWindow.mainScreen.document.getLastCursorOverPageObject();
+        ArrayList<GradeTreeItem> items = GradeTreeView.getGradesArray(GradeTreeView.getTotal());
+        int moved = 0;
+        int madeVisible = 0;
+        
+        for(GradeTreeItem item : items){
+            GradeElement element = item.getCore();
+            int targetPage = getGeneratedPageForGrade(item);
+            if(element.getPageNumber() != targetPage){
+                MainWindow.mainScreen.registerNewAction(new MoveUndoAction(moved == 0 ? UType.ELEMENT : UType.ELEMENT_NO_COUNT_BEFORE, element));
+                element.switchPage(targetPage);
+                element.checkLocation(false);
+                moved++;
+            }
+            if(!element.isAlwaysVisible()){
+                element.setAlwaysVisible(true, madeVisible == 0);
+                madeVisible++;
+            }
+        }
+        
+        if(moved > 0 || madeVisible > 0){
+            Edition.setUnsave("GradePositionsGenerated");
+            MainWindow.footerBar.showToast(Color.web("#1b5e20"), Color.WHITE, "Generated grade positions.");
+        }else{
+            MainWindow.footerBar.showToast(Color.web("#424242"), Color.WHITE, "Grade positions are already generated.");
+        }
+    }
+    
+    private int getGeneratedPageForGrade(GradeTreeItem item){
+        boolean summaryRow = item == GradeTreeView.getTotal() || item.getParent() == GradeTreeView.getTotal();
+        OptionalInt mappedPage = summaryRow || MainWindow.footerBar == null ? OptionalInt.empty() : MainWindow.footerBar.getExercisePageIndex(getTopLevelExerciseKey(item));
+        return ExerciseCorrectionWorkflow.getGeneratedGradePageIndex(summaryRow, mappedPage, item.getCore().getPageNumber(), MainWindow.mainScreen.document.getPagesNumber());
+    }
+    
+    private String getTopLevelExerciseKey(GradeTreeItem item){
+        GradeTreeItem topLevelParent = item;
+        while(topLevelParent.getParent() instanceof GradeTreeItem gradeTreeItem && gradeTreeItem != GradeTreeView.getTotal()){
+            topLevelParent = gradeTreeItem;
+        }
+        
+        int topLevelIndex = GradeTreeView.getTotal().getChildren().indexOf(topLevelParent);
+        return ExerciseCorrectionWorkflow.getNewGradeExerciseKey(false, -1, topLevelIndex);
     }
     
     private String getExerciseKeyForNewGrade(GradeTreeItem parent){
