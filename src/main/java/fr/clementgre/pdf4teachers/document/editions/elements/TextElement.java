@@ -20,6 +20,7 @@ import fr.clementgre.pdf4teachers.interfaces.windows.log.Log;
 import fr.clementgre.pdf4teachers.panel.sidebar.SideBar;
 import fr.clementgre.pdf4teachers.panel.sidebar.texts.TextTreeItem;
 import fr.clementgre.pdf4teachers.panel.sidebar.texts.TextTreeView;
+import fr.clementgre.pdf4teachers.panel.sidebar.texts.TextCopyToFilesDialog;
 import fr.clementgre.pdf4teachers.panel.sidebar.texts.TreeViewSections.TextTreeSection;
 import fr.clementgre.pdf4teachers.utils.MathUtils;
 import fr.clementgre.pdf4teachers.utils.StringUtils;
@@ -145,15 +146,18 @@ public class TextElement extends Element {
         item1.setToolTip(TR.tr("elements.delete.tooltip"));
         NodeMenuItem item2 = new NodeMenuItem(TR.tr("actions.duplicate"), false);
         item2.setToolTip(TR.tr("elements.duplicate.tooltip"));
+        NodeMenuItem item5 = new NodeMenuItem(TR.tr("textTab.copyToFilesDialog.accessButton"), false);
+        item5.setToolTip(TR.tr("textTab.copyToFilesDialog.accessButton.tooltip"));
         NodeMenuItem item3 = new NodeMenuItem(TR.tr("elementMenu.addToPreviousList"), false);
         item3.setToolTip(TR.tr("elementMenu.addToPreviousList.tooltip"));
         NodeMenuItem item4 = new NodeMenuItem(TR.tr("elementMenu.addToFavouriteList"), false);
         item4.setToolTip(TR.tr("elementMenu.addToFavouritesList.tooltip"));
-        menu.getItems().addAll(item1, item2, item4, item3);
+        menu.getItems().addAll(item1, item2, item5, item4, item3);
         NodeMenuItem.setupMenu(menu);
         
         item1.setOnAction(e -> delete(true, UType.ELEMENT));
         item2.setOnAction(e -> cloneOnDocument());
+        item5.setOnAction(e -> new TextCopyToFilesDialog().show(this));
         item3.setOnAction(e -> TextTreeView.addSavedElement(this.toNoDisplayTextElement(TextTreeSection.LAST_TYPE, true)));
         item4.setOnAction(e -> TextTreeView.addSavedElement(this.toNoDisplayTextElement(TextTreeSection.FAVORITE_TYPE, true)));
     }
@@ -587,4 +591,3 @@ public class TextElement extends Element {
     }
     
 }
-

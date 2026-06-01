@@ -71,9 +71,12 @@ public class Settings {
     @SettingObject
     public IntSetting regularSave = new IntSetting(-1, true, 1, 60, 5, true, false, SVGPathIcons.CLOCK, "regularSave",
             "settings.regularSave.title", "settings.regularSave.tooltip");
-    
+    @SettingObject
+    public BooleanSetting storeEditionsNextToPdf = new BooleanSetting(false, true, SVGPathIcons.FOLDER, "storeEditionsNextToPdf",
+            "settings.storeEditionsNextToPdf.title", "settings.storeEditionsNextToPdf.tooltip");
+
     @SettingsGroup(title = "settings.group.save")
-    public Setting<?>[] saveGroup = {autoSave, regularSave};
+    public Setting<?>[] saveGroup = {autoSave, regularSave, storeEditionsNextToPdf};
     
     
     @SettingObject

@@ -68,6 +68,7 @@ public class TextTab extends SideTab {
 
     private final HBox btnBox = new HBox();
     private final Button deleteBtn = new Button(TR.tr("actions.delete"));
+    private final Button copyToFilesBtn = new Button(TR.tr("textTab.copyToFilesDialog.accessButton"));
     public Button newBtn = new Button(TR.tr("actions.new"));
 
     public static final String TEXT_TREE_ITEM_DRAG_KEY = "TextTreeItemDrag";
@@ -169,12 +170,16 @@ public class TextTab extends SideTab {
         PaneUtils.setHBoxPosition(deleteBtn, -1, 30, 2.5);
         deleteBtn.disableProperty().bind(Bindings.createBooleanBinding(() -> MainWindow.mainScreen.selectedProperty().get() == null || !(MainWindow.mainScreen.getSelected() instanceof TextElement), MainWindow.mainScreen.selectedProperty()));
 
+        PaneUtils.setHBoxPosition(copyToFilesBtn, -1, 30, 2.5);
+        copyToFilesBtn.setTooltip(new Tooltip(TR.tr("textTab.copyToFilesDialog.accessButton.tooltip")));
+        copyToFilesBtn.disableProperty().bind(Bindings.createBooleanBinding(() -> MainWindow.mainScreen.selectedProperty().get() == null || !(MainWindow.mainScreen.getSelected() instanceof TextElement), MainWindow.mainScreen.selectedProperty()));
+
         PaneUtils.setHBoxPosition(newBtn, -1, 30, 2.5);
         newBtn.disableProperty().bind(MainWindow.mainScreen.statusProperty().isNotEqualTo(MainScreen.Status.OPEN));
 
         combosBox.getChildren().addAll(fontCombo, sizeSpinner);
         colorAndParamsBox.getChildren().addAll(colorPicker, boldBtn, itBtn);
-        btnBox.getChildren().addAll(deleteBtn, newBtn);
+        btnBox.getChildren().addAll(deleteBtn, copyToFilesBtn, newBtn);
 
         VBox.setMargin(combosBox, new Insets(2.5, 2.5, 0, 2.5));
         VBox.setMargin(colorAndParamsBox, new Insets(0, 2.5, 0, 2.5));
@@ -372,6 +377,7 @@ public class TextTab extends SideTab {
             }
         });
         newBtn.setOnAction(e -> newTextElement(true));
+        copyToFilesBtn.setOnAction(e -> new TextCopyToFilesDialog().show());
         deleteBtn.setOnAction(e -> {
             MainWindow.mainScreen.getSelected().delete(true, UType.ELEMENT);
             MainWindow.mainScreen.setSelected(null);
@@ -427,6 +433,7 @@ public class TextTab extends SideTab {
         if(txtArea.getHeight() != height){
             txtArea.minHeightProperty().bind(new SimpleDoubleProperty(height));
             deleteBtn.setLayoutY(80 + height);
+            copyToFilesBtn.setLayoutY(80 + height);
             newBtn.setLayoutY(80 + height);
         }
 

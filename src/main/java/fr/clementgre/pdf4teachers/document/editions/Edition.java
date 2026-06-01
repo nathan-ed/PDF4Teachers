@@ -409,9 +409,30 @@ public class Edition{
         return count;
     }
 
-    
+
     // get YAML file from PDF file
     public static File getEditFile(File pdfFile){
+        // New behavior: store next to PDF
+        if(Main.settings != null && Main.settings.storeEditionsNextToPdf.getValue()){
+            File editFile = new File(pdfFile.getParentFile(), "." + pdfFile.getName() + ".yml");
+            editFile = FilesUtils.toSafePath(editFile);
+
+            // Backward compatibility: if file doesn't exist in new location, check old location
+            if(!editFile.exists()){
+                File oldEditFile = getEditFileInCentralizedLocation(pdfFile);
+                if(oldEditFile.exists()){
+                    return oldEditFile;
+                }
+            }
+            return editFile;
+        }
+
+        // Old behavior: centralized storage
+        return getEditFileInCentralizedLocation(pdfFile);
+    }
+
+    // Helper method for centralized storage location
+    private static File getEditFileInCentralizedLocation(File pdfFile){
         String namePath = pdfFile.getParentFile().getAbsolutePath().replace(File.separator, "!E!").replace(":", "!P!");
         String nameName = pdfFile.getName() + ".yml";
         File editFile = new File(Main.dataFolder + "editions" + File.separator + namePath + "!E!" + nameName);
@@ -420,10 +441,18 @@ public class Edition{
     
     // get PDF file from YAML file
     public static File getFileFromEdit(File editFile){
+        // New format: .pdfName.yml stored next to PDF
+        if(editFile.getName().startsWith(".") && editFile.getName().endsWith(".yml")){
+            String pdfName = editFile.getName().substring(1); // Remove leading dot
+            pdfName = StringUtils.removeAfterLastOccurrence(pdfName, ".yml");
+            return new File(editFile.getParentFile(), pdfName);
+        }
+
+        // Old format: encoded path in centralized location
         String path = editFile.getName();
         path = path.replaceAll(Pattern.quote("!E!"), "\\" + File.separator).replaceAll(Pattern.quote("!P!"), ":");
         path = StringUtils.removeAfterLastOccurrence(path, ".yml");
-        
+
         if(!editFile.getName().contains("!P!") && PlatformUtils.isWindows()){
             return new File(File.separator + path);
         }
